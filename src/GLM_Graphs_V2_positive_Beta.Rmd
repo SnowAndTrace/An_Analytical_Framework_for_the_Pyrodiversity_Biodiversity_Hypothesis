@@ -1,0 +1,742 @@
+---
+title: "GLM_Graphs_V2"
+author: "Benhao Gu"
+date: "2025-08-03"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+rm(list = ls())
+library(tidyverse)
+library(sjPlot)
+library(lme4)
+library(readxl)
+library(ggplot2)
+library(plotly)
+```
+
+```{r}
+#Variable settings
+#In both bio and pyro 
+b_list = seq(0.02, 10, length.out = 100)
+k_list = seq(0.5, 2, length.out = 100)
+t = seq(0.001, 1000.001, length.out = 100001)
+
+setwd("C:/Users/guben/OneDrive - The University of Melbourne/Unimelb/2025/Research/Simulation/R_data")
+data <- read_csv("species_power_dist.csv")
+spec(data)
+
+species_list = data$species
+alpha_list = data$alpha
+beta_list = data$beta + 1
+n = length(data$species)
+sum(beta_list) #0.555
+```
+
+```{r}
+# t = seq(0.001, 15.001, length.out = 16)
+
+power_fun = function(t, alpha, beta){
+  return(sapply(seq_along(alpha), function(i) alpha[i] * t^beta[i]))
+}
+
+gfunction = function(t_list, b, k){
+  return(b^(1/k) * exp(-b * t_list^k) / gamma(1/k + 1))
+}
+
+# biodiversity index for fixed b, k and species
+bio_index_thm = function(b, k){
+  # This is the mathematically correct formula for the integral
+  d = alpha_list * b^(-(beta_list - 1)/k) * gamma(beta_list / k) / gamma(1/k)  
+  # The rest of the function remains the same
+  power = sum(log(d))/n
+  G = exp(power)
+  return (log(G))
+}
+
+bio_index_num = function(b, k){
+  # d = colSums(power_fun(t, alpha_list, beta_list) * gfunction(t, b, k)) * 1000/100001
+  d = t(as.matrix(power_fun(t, alpha_list, beta_list))) %*% as.matrix(gfunction(t, b, k)) * 1000/100001
+  power = sum(log(d))/n
+  G = exp(power)
+  return (log(G))
+}
+
+d_generator = function(b, k, alpha, beta){
+  alpha_value = alpha
+  beta_value = beta
+  
+  # functions
+  power_fun_t = function(t){
+    return (power_fun(t, alpha_value, beta_value))  
+  }
+  
+  gfunction_t = function(t){
+    return (gfunction(t, b, k))
+  }
+  
+  bio_t = function(t){
+    return (power_fun_t(t) * gfunction_t(t))
+  }
+  
+  d = integrate(bio_t, 0, Inf)
+  
+  return (d)
+  # power = sum(log(d))/n
+  # G = exp(power)
+  # return (log(G))
+}
+
+bio_index_auto = function(b, k){
+  d = unlist(mapply(function(alpha, beta) {
+  d_generator(b = b, k = k, alpha = alpha, beta = beta)$value
+}, alpha_list, beta_list))
+  
+  power = sum(log(d))/n
+  G = exp(power)
+  return (log(G))
+}
+# 
+# bio_index_auto(2, 0.5)
+# 
+# bio_index_auto(1.5, 0.5, alpha_list[1], beta_list[1])
+# t = seq(0.001, 1000.001, length.out = 1000001)
+# b = 0.5
+# k = 1.5
+# alpha_list * b^(-beta_list/k) * gamma((beta_list + 1)/k) / gamma(1/k)
+# 
+# 
+# colSums(power_fun(t, alpha_list, beta_list) * gfunction(t, 1.5, 0.5)) * 1000/10001
+
+
+
+# [1] -0.9455497
+# [1] -0.9499783
+system.time(bio_index_auto(2, 0.5))
+system.time({bio_index_thm(2, 0.5)})
+system.time(bio_index_num(2, 0.5))
+
+
+bio_index_auto(2, 0.5)
+bio_index_thm(2, 0.5)
+bio_index_num(2, 0.5)
+```
+
+
+```{r}
+b = 1.5
+k = 0.5
+t = c(1, 2)
+  power_fun_t = function(t){
+    return (power_fun(t, alpha_list[1], beta_list[1]))  
+    }
+  gfunction_t = function(t){
+    return (gfunction(t, b, k))
+  }
+  bio_x = function(x){
+    return (power_fun_t(x) * gfunction_t(x))
+  }
+  
+  bio_x(1)
+  
+  d = integrate(bio_x, 0, Inf)
+
+d
+
+```
+
+
+
+```{r}
+library(ggplot2)
+library(viridis)
+
+# --- Pyro index (unchanged formula) ---
+pyro_index <- function(b, k) {
+  1/k * (1 - log(b)) + lgamma(1/k + 1)
+}
+
+# --- Biodiversity index: using your pure GLM approach ---
+# (Assuming bio_index_thm is defined in your environment)
+bio_index <- function(b, k) {
+  bio_index_thm(b, k)  # returns log(G) directly
+}
+
+# --- 1. Sweep b for fixed k values ---
+b_vals <- seq(0.2, 3, length.out = 100)
+# k_fixed <- c(0.6, 0.7, 1, 1.5, 2)
+k_fixed <- c(1, 1.5, 2)
+
+df1 <- expand.grid(b = b_vals, k = k_fixed)
+df1$pyro <- mapply(pyro_index, df1$b, df1$k)
+df1$logBio <- mapply(bio_index, df1$b, df1$k)
+
+p1 <- ggplot(df1, aes(x = pyro, y = logBio, color = factor(k))) +
+  geom_line(linewidth = 1) +
+  
+  # UPDATED THIS LINE to set both y-axis and x-axis limits
+  coord_cartesian(ylim = c(-1.4, -0.9), xlim = c(-0.7, 4.5)) +
+  
+  labs(
+    x = "Pyro Index",
+    y = "log(Geometric Species Index)",
+    color = "k (fixed)"
+  ) +
+  theme_minimal()
+
+print(p1)
+
+# --- 2. Sweep k for fixed b values ---
+k_vals <- seq(5, 5.7, length.out = 50)
+b_fixed <- c(2)
+
+df2 <- expand.grid(b = b_fixed, k = k_vals)
+df2$pyro <- mapply(pyro_index, df2$b, df2$k)
+df2$logBio <- mapply(bio_index, df2$b, df2$k)
+
+p2 <- ggplot(df2, aes(x = pyro, y = logBio, color = factor(b))) +
+  geom_line(linewidth = 1) +
+  
+  # UPDATED THIS LINE to set both y-axis and x-axis limits
+  coord_cartesian(ylim = c(-1.4, -0.9), xlim = c(-0.7, 4.5)) +
+  labs(
+    x = "Pyro Index",
+    y = "log(Geometric Species Index)",
+    color = "b (fixed)"
+  ) +
+  theme_minimal()
+
+print(p2)
+```
+
+```{r}
+# Load the ggplot2 library
+library(ggplot2)
+
+# --- Data Generation (assuming your functions are loaded) ---
+# This part of your script remains the same
+k_vals <- seq(0.4, 100, length.out = 50000)
+# k_vals <- seq(1, 10, length.out = 50000) 
+b_fixed <- c(0.4, 1.5, 3, 5)
+
+df2 <- expand.grid(b = b_fixed, k = k_vals)
+df2$pyro <- mapply(pyro_index, df2$b, df2$k)
+df2$logBio <- mapply(bio_index, df2$b, df2$k)
+
+# --- PLOTTING CODE WITH Y-AXIS LIMITS ---
+p2_simple_trajectory <- ggplot(df2, aes(x = pyro, y = logBio, color = factor(b), group = b)) +
+  geom_path(linewidth = 1.2) + 
+  
+  # ADDED THIS LINE to set the y-axis limits
+  coord_cartesian(ylim = c(-1.4, -0.8), xlim = c(-0.7, 4.5)) +
+  
+  labs(
+    x = "Pyro Index",
+    y = "log(Geometric Species Index)",
+    color = "b (fixed)" # This creates the legend title
+  ) +
+  theme_minimal()
+
+print(p2_simple_trajectory)
+```
+```{r}
+# Load the ggplot2 library
+library(ggplot2)
+
+# --- Data Generation (assuming your functions are loaded) ---
+# This part of your script remains the same
+# k_vals <- seq(0.4, 100, length.out = 50000) 
+k_vals <- seq(1, 2, length.out = 50000) 
+b_fixed <- c(0.4, 1.5, 3, 5)
+
+df2 <- expand.grid(b = b_fixed, k = k_vals)
+df2$pyro <- mapply(pyro_index, df2$b, df2$k)
+df2$logBio <- mapply(bio_index, df2$b, df2$k)
+
+# --- PLOTTING CODE WITH Y-AXIS LIMITS ---
+p2_simple_trajectory <- ggplot(df2, aes(x = pyro, y = logBio, color = factor(b), group = b)) +
+  geom_path(linewidth = 1.2) + 
+  
+  # ADDED THIS LINE to set the y-axis limits
+  coord_cartesian(ylim = c(-1.4, -0.8), xlim = c(-0.7, 4.5)) +
+  
+  labs(
+    x = "Pyro Index",
+    y = "log(Geometric Species Index)",
+    color = "b (fixed)" # This creates the legend title
+  ) +
+  theme_minimal()
+
+print(p2_simple_trajectory)
+```
+
+```{r}
+# Load the ggplot2 library
+library(ggplot2)
+
+# --- Data Generation (same as your script) ---
+k_vals <- seq(0.1, 10000, length.out = 50000) 
+b_fixed <- c(2, 10)
+
+df2 <- expand.grid(b = b_fixed, k = k_vals)
+df2$pyro <- mapply(pyro_index, df2$b, df2$k)
+df2$logBio <- mapply(bio_index, df2$b, df2$k)
+
+# --- CORRECTED PLOTTING CODE ---
+p2_simple_trajectory <- ggplot(df2, aes(x = pyro, y = logBio, color = factor(b), group = b)) +
+  # Use geom_path to draw a line for each 'b' value
+  geom_path(size = 1.2) + 
+  
+  labs(
+    x = "Pyro Index",
+    y = "log(Geometric Species Index)",
+    color = "b (fixed)" # This creates the legend title
+  ) +
+  theme_minimal()
+
+print(p2_simple_trajectory)
+```
+
+
+
+```{r}
+plot(df2$k, df2$pyro)
+plot(df2$k, df2$logBio)
+
+```
+
+
+```{r}
+# Load the ggplot2 and viridis libraries (for a better color scale)
+library(ggplot2)
+library(viridis)
+
+# --- 2. Sweep k for fixed b values ---
+# It's good to use more points for a smoother line
+# Horitontal Intercept
+# k_vals <- seq(6, 10000, length.out = 50000)
+# b_fixed <- c(0.9)
+
+k_vals <- seq(0.1, 10000, length.out = 50000)
+b_fixed <- c(50)
+
+# k_vals <- seq(0.9, 10, length.out = 50000)
+# b_fixed <- c(3)
+
+# k_vals <- seq(0.9, 15, length.out = 50000)
+# b_fixed <- c(4)
+
+df2 <- expand.grid(b = b_fixed, k = k_vals)
+df2$pyro <- mapply(pyro_index, df2$b, df2$k)
+df2$logBio <- mapply(bio_index, df2$b, df2$k)
+
+# --- PLOTTING CODE FOR A COLORED TRAJECTORY ---
+p2_trajectory <- ggplot(df2, aes(x = pyro, y = logBio)) +
+  # Use geom_path and map the color to the continuous 'k' value
+  geom_path(aes(color = k),
+            size = 1.2,
+            # This adds an arrow to the end of the line to show direction
+            arrow = arrow(length = unit(0.3, "cm"))) +
+
+  # Use a color scale that is easy to read
+  scale_color_viridis_c() +
+
+  labs(
+    x = "Pyro Index",
+    y = "log(Geometric Species Index)",
+    title = "Trajectory Plot for b = 1",
+    color = "k" # Update the legend title
+  ) +
+  theme_minimal()
+
+print(p2_trajectory)
+
+
+```
+
+```{r}
+pyro_index(3, 1.571)
+bio_index(3, 1.571)
+
+```
+
+
+```{r}
+library(dplyr)
+library(ggplot2)
+
+# Clean df1
+df1_clean <- df1 %>%
+  filter(is.finite(pyro), is.finite(logBio)) %>%   # remove NaN/Inf
+  arrange(k, pyro) %>%                             # order so lines plot sensibly
+  group_by(k)
+
+p1 <- ggplot(df1_clean, aes(x = pyro, y = logBio, color = factor(k), group = factor(k))) +
+  geom_line(size = 1, na.rm = TRUE) +
+  labs(x = "Pyro Index", y = "log(Geometric Species Index)", color = "k (fixed)") +
+  theme_minimal()
+
+print(p1)
+
+# Clean df2
+df2_clean <- df2 %>%
+  filter(is.finite(pyro), is.finite(logBio)) %>%
+  arrange(b, pyro) %>%
+  group_by(b)
+
+p2 <- ggplot(df2_clean, aes(x = pyro, y = logBio, color = factor(b), group = factor(b))) +
+  geom_line(size = 1, na.rm = TRUE) +
+  labs(x = "Pyro Index", y = "log(Geometric Species Index)", color = "b (fixed)") +
+  theme_minimal()
+
+print(p2)
+
+
+
+```
+
+
+```{r}
+plot(df2$k ,df2$pyro)
+
+plot(df2$k ,df2$logBio)
+
+```
+```{r}
+# # Load necessary libraries for plotting and animation
+# # Make sure you have these installed: install.packages(c("ggplot2", "gganimate", "gifski"))
+# # install.packages("gifski")
+# library(ggplot2)
+# library(gganimate)
+# library(gifski) # Used for rendering the animation as a GIF
+# 
+# # --- User's Original Code (for context) ---
+# 
+# # --- Pyro index (unchanged formula) ---
+# pyro_index <- function(b, k) {
+#   1/k * (1 - log(b)) + lgamma(1/k + 1)
+# }
+# 
+# # --- Biodiversity index: using your pure GLM approach ---
+# #     This assumes the existence of a function bio_index_auto(b, k)
+# #     For this example to run, we'll create a placeholder for it based on the thesis formulas.
+# #     You should replace this with your actual bio_index_auto function.
+# A_vals <- c(1.3252,0.9700,0.4485,0.0806,0.2108,3.5818,1.8363,0.0096,0.8212,0.0297,0.3014)
+# B_vals <- c(0.9019,0.5291,1.1164,1.3852,0.9919,0.7674,0.6559,1.7940,1.1084,1.5550,0.7506)
+# n_species <- 11
+# 
+# bio_index_auto <- function(b, k) {
+#   log_di <- log(A_vals) - ((B_vals - 1) / k) * log(b) + (lgamma(B_vals / k) - lgamma(1 / k))
+#   log_G <- sum(log_di) / n_species
+#   return(log_G)
+# }
+# 
+# bio_index <- function(b, k) {
+#   bio_index_auto(b, k)  # returns log(G) directly
+# }
+# 
+# # --- Data generation for the case where k is varied ---
+# k_vals <- seq(5, 5.7, length.out = 200) # Increased points for a smoother animation
+# b_fixed <- c(2)
+# 
+# df2 <- expand.grid(b = b_fixed, k = k_vals)
+# df2$pyro <- mapply(pyro_index, df2$b, df2$k)
+# df2$logBio <- mapply(bio_index, df2$b, df2$k)
+# 
+# 
+# # --- NEW ANIMATION CODE ---
+# 
+# #' Create an animated trajectory of the parametric curve.
+# #'
+# #' @param data A dataframe containing columns 'pyro', 'logBio', and 'k'.
+# #' @param orientation A string, either "P_vs_lnG" (jagged plot) or "lnG_vs_P" (smooth plot).
+# #' @return A gganim object.
+# animate_trajectory <- function(data, orientation = "P_vs_lnG") {
+# 
+#   # Start with a base ggplot object
+#   p <- ggplot(data)
+# 
+#   # Set the aesthetics based on the desired orientation
+#   if (orientation == "P_vs_lnG") {
+#     p <- p + aes(x = pyro, y = logBio) +
+#       labs(
+#         title = 'Tracing the curve for k = {round(frame_along, 2)}',
+#         x = "Pyro Index",
+#         y = "log(Geometric Species Index)"
+#       )
+#   } else {
+#     p <- p + aes(x = logBio, y = pyro) +
+#       labs(
+#         title = 'Tracing the curve for k = {round(frame_along, 2)}',
+#         x = "log(Geometric Species Index)",
+#         y = "Pyro Index"
+#       )
+#   }
+# 
+#   # Add layers for the path and the animation
+#   # geom_path traces the full trajectory in a light color
+#   # geom_point shows the current position as a moving red dot
+#   anim <- p +
+#     geom_path(color = 'grey', size = 0.5) +
+#     geom_point(color = 'red', size = 3) +
+#     theme_minimal() +
+#     # This is the core gganimate function: it reveals the data along the 'k' variable
+#     transition_reveal(along = k) +
+#     ease_aes('linear') # Ensures constant speed of animation
+# 
+#   return(anim)
+# }
+# 
+# # --- Generate the two animations ---
+# 
+# # 1. Animation for the jagged plot (P on x-axis, ln(G) on y-axis)
+# jagged_animation <- animate_trajectory(df2, orientation = "P_vs_lnG")
+# 
+# # 2. Animation for the smooth plot (ln(G) on x-axis, P on y-axis)
+# smooth_animation <- animate_trajectory(df2, orientation = "lnG_vs_P")
+# 
+# 
+# # --- Render and Save the Animations ---
+# 
+# # This will render the animation. In RStudio, it will appear in the Viewer pane.
+# # It might take a moment to process.
+# print(jagged_animation)
+# print(smooth_animation)
+# 
+# jagged_animation_def <- animate_trajectory(df2, orientation = "P_vs_lnG")
+# smooth_animation_def <- animate_trajectory(df2, orientation = "lnG_vs_P")
+# 
+# # Use anim_save() to save the animations to your working directory as GIF files.
+# # anim_save() defaults to saving the last animation that was rendered.
+# cat("Rendering jagged animation... This may take a moment.\n")
+# jagged_rendered <- animate(jagged_animation_def, renderer = gifski_renderer())
+# 
+# cat("Rendering smooth animation... This may take a moment.\n")
+# smooth_rendered <- animate(smooth_animation_def, renderer = gifski_renderer())
+# 
+# # Now, we can reliably save these rendered objects to files.
+# cat("Saving animations to disk...\n")
+# 
+# anim_save("jagged_trajectory.gif", animation = jagged_rendered)
+# anim_save("smooth_trajectory.gif", animation = smooth_rendered)
+# 
+# cat("Animations saved successfully to your working directory.\n")
+# ```
+# 
+# 
+# 
+# ```{r}
+# # --- Pyro index (unchanged formula) ---
+# pyro_index <- function(b, k) {
+#   1/k * (1 - log(b)) + lgamma(1/k + 1)
+# }
+# 
+# # --- Biodiversity index: using your pure GLM approach ---
+# #   You can swap bio_index_auto with bio_index_thm or bio_index_num
+# bio_index <- function(b, k) {
+#   bio_index_thm(b, k)  # returns log(G) directly
+# }
+# 
+# # --- 1. Sweep b for fixed k values ---
+# b_vals <- seq(0.2, 4, length.out = 100)
+# k_fixed <- c(0.6, 0.7, 1, 1.5, 2)
+# 
+# df1 <- expand.grid(b = b_vals, k = k_fixed)
+# df1$pyro <- mapply(pyro_index, df1$b, df1$k)
+# df1$logBio <- mapply(bio_index, df1$b, df1$k)
+# 
+# p1 <- ggplot(df1, aes(x = pyro, y = logBio, color = factor(k))) +
+#   geom_line(size = 1) +
+#   labs(
+#     x = "Pyro Index",
+#     y = "log(Geometric Species Index)",
+#     color = "k (fixed)"
+#   ) +
+#   theme_minimal()
+# 
+# print(p1)
+# 
+# # --- 2. Sweep k for fixed b values ---
+# k_vals <- seq(5, 5.7, length.out = 50)
+# # b_fixed <- c(0.2, 0.5, 1, 2, 3)
+# b_fixed <- c(2)
+# 
+# 
+# df2 <- expand.grid(b = b_fixed, k = k_vals)
+# df2$pyro <- mapply(pyro_index, df2$b, df2$k)
+# df2$logBio <- mapply(bio_index, df2$b, df2$k)
+# 
+# p2 <- ggplot(df2, aes(x = logBio, y = pyro, color = factor(b))) +
+#   geom_line(size = 1) +
+#   labs(
+#     x = "log(Geometric Species Index)",
+#     y = "Pyro Index",
+#     color = "b (fixed)"
+#   ) +
+#   theme_minimal()
+# 
+# print(p2)
+
+```
+
+
+
+
+
+
+```{r}
+# --- Pyro index (unchanged formula) ---
+pyro_index <- function(b, k) {
+  1/k * (1 - log(b)) + lgamma(1/k + 1)
+}
+
+# --- Biodiversity index: using your pure GLM approach ---
+#   You can swap bio_index_auto with bio_index_thm or bio_index_num
+bio_index <- function(b, k) {
+  bio_index_thm(b, k)  # returns log(G) directly
+}
+
+# --- 1. Sweep b for fixed k values ---
+b_vals <- seq(0.2, 4, length.out = 100)
+k_fixed <- c(0.6, 0.7, 1, 1.5, 2)
+
+df1 <- expand.grid(b = b_vals, k = k_fixed)
+df1$pyro <- mapply(pyro_index, df1$b, df1$k)
+df1$logBio <- mapply(bio_index, df1$b, df1$k)
+
+p1 <- ggplot(df1, aes(x = pyro, y = logBio, color = factor(k))) +
+  geom_line(size = 1) +
+  labs(
+    x = "Pyro Index",
+    y = "log(Geometric Species Index)",
+    color = "k (fixed)"
+  ) +
+  theme_minimal()
+
+print(p1)
+
+# --- 2. Sweep k for fixed b values ---
+k_vals <- seq(0.4, 10, length.out = 500)
+# b_fixed <- c(0.2, 0.5, 1, 2, 3)
+b_fixed <- c(3)
+
+
+df2 <- expand.grid(b = b_fixed, k = k_vals)
+df2$pyro <- mapply(pyro_index, df2$b, df2$k)
+df2$logBio <- mapply(bio_index, df2$b, df2$k)
+
+p2 <- ggplot(df2, aes(x = pyro, y = logBio, color = factor(b))) +
+  geom_line(size = 1) +
+  labs(
+    x = "Pyro Index",
+    y = "log(Geometric Species Index)",
+    color = "b (fixed)"
+  ) +
+  theme_minimal()
+
+print(p2)
+
+```
+
+```{r}
+# --- Standalone Debugging Snippet ---
+
+# 1. Define the parameters for the test case
+b_test <- 7
+# This is the theoretical 'k' where the turning point occurs for b=7
+k_turning_point <- 0.6894
+
+# 2. Define the Pyro Index function (copied from your thesis)
+pyro_index <- function(b, k) {
+  return(1 / k * (1 - log(b)) + lgamma(1 / k + 1))
+}
+
+# 3. Calculate the Pyro Index at the theoretical turning point
+pyro_value_at_minimum <- pyro_index(b_test, k_turning_point)
+
+# 4. Print the result
+print(paste("For b =", b_test, "the theoretical minimum should be at Pyro Index =", round(pyro_value_at_minimum, 3)))
+
+```
+
+
+
+```{r}
+# --- Pyro index formula ---
+pyro_index <- function(b, k) {
+  1/k * (1 - log(b)) + lgamma(1/k + 1)
+}
+
+# Parameters to sweep
+b_vals <- seq(0.2, 3, length.out = 100)   # avoid b=0 or 1 for log(b)
+k_fixed <- c(0.6, 0.7, 1, 1.5, 2)
+
+# Data for fixed k
+df_glm <- expand.grid(b = b_vals, k = k_fixed)
+
+# Calculate pyro index and biodiversity index (GLM only)
+df_glm$pyro <- mapply(pyro_index, df_glm$b, df_glm$k)
+df_glm$logBio <- mapply(bio_index_thm, df_glm$b, df_glm$k)
+
+# Pyro vs b
+p1 <- ggplot(df_glm, aes(x = b, y = pyro, color = factor(k))) +
+  geom_line(size = 1) +
+  labs(x = "b", y = "Pyro Index", color = "k") +
+  theme_minimal()
+
+# log(Bio) vs b
+p2 <- ggplot(df_glm, aes(x = b, y = logBio, color = factor(k))) +
+  geom_line(size = 1) +
+  labs(x = "b", y = "log(Geometric Mean Bio)", color = "k") +
+  theme_minimal()
+
+# log(Bio) vs Pyro
+p3 <- ggplot(df_glm, aes(x = pyro, y = logBio, color = factor(k))) +
+  geom_line(size = 1) +
+  labs(x = "Pyro Index", y = "log(Geometric Mean Bio)", color = "k") +
+  theme_minimal()
+
+# Show plots
+print(p1)
+print(p2)
+print(p3)
+
+
+```
+
+
+```{r}
+library(tidyverse)
+
+# Time range for plotting
+t_plot <- seq(0.1, 100, length.out = 200)  
+
+# Make a tidy data frame of all curves
+df_power <- map_dfr(seq_along(alpha_list), function(i) {
+  tibble(
+    t = t_plot,
+    species = species_list[i],
+    value = alpha_list[i] * t_plot^beta_list[i]
+  )
+})
+
+# Find y-axis limits (so all species share the same scale)
+y_max <- max(df_power$value, na.rm = TRUE)
+
+# Plot
+ggplot(df_power, aes(x = t, y = value, color = species)) +
+  geom_line(size = 1) +
+  labs(
+    x = "t",
+    y = "Power function value",
+    title = "Species-specific Power Functions from GLM"
+  ) +
+  ylim(0, y_max) +
+  theme_minimal()
+
+
+```
