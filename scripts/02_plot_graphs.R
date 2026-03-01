@@ -26,7 +26,7 @@ for (scen in scenarios) {
     
     # Generate the ggplot
     p <- ggplot(plot_data, aes(x = pyro, y = logBio)) +
-      geom_path(aes(color = k), size = 1.2, arrow = arrow(length = unit(0.3, "cm"))) + #
+      geom_path(aes(color = k), linewidth = 1.2, arrow = arrow(length = unit(0.3, "cm"))) + #
       scale_color_viridis_c() + #
       labs(
         x = "Pyro Index",

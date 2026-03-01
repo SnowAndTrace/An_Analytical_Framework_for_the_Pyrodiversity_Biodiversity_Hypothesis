@@ -7,7 +7,7 @@ data <- read_csv("data/species_power_dist.csv") #
 alpha_list <- data$alpha #
 
 # 2. Define Parameters for the grid
-k_vals <- seq(0.12, 100, length.out = 10000) #
+k_vals <- seq(0.3, 3, length.out = 10000) #
 b_fixed_vals <- c(0.5, 0.9, 1, 3) 
 
 # Create an empty dataframe to store results
