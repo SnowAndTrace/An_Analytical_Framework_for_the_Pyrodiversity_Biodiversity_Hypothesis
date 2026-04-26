@@ -7,8 +7,11 @@ data <- read_csv("data/species_power_dist.csv") #
 alpha_list <- data$alpha #
 
 # 2. Define Parameters for the grid
-k_vals <- seq(0.12, 100, length.out = 10000) #
-b_fixed_vals <- c(0.5, 0.9, 1, 3) 
+k_vals_feasible <- seq(0.3, 3, length.out = 5000) 
+k_vals_extreme <- seq(3.1, 10000, length.out = 5000) 
+k_vals <- c(k_vals_feasible, k_vals_extreme)
+
+b_fixed_vals <- c(0.005, 0.01, 0.5, 0.9, 1, 3) 
 
 # Create an empty dataframe to store results
 all_trajectories <- data.frame()
