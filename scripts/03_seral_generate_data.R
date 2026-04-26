@@ -4,8 +4,6 @@ library(readxl)
 data <- read_excel("data/data.xlsx")
 
 # Create a clean log_tsf variable. 
-# (Your data already has a 'log(tsf)' column, but naming it cleanly 
-# prevents syntax errors in the glm formula).
 data <- data %>% mutate(log_tsf = log(tsf))
 
 # Extract the 11 species names (starting from column 3)

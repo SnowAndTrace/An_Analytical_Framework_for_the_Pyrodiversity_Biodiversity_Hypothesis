@@ -57,7 +57,7 @@ for (scen in scenarios) {
     
     # Create the exact filename for Overleaf (e.g., Pyro_Bio_beta_positive_b_0_5.png)
     b_str <- gsub("\\.", "_", as.character(b_v))
-    file_name <- paste0("Figures/Pyro_Bio_beta_", scen, "_b_", b_str, ".png")
+    file_name <- paste0("Figures/Power_Figures/Pyro_Bio_beta_", scen, "_b_", b_str, ".png")
     
     # Save the plot
     ggsave(filename = file_name, plot = p, width = 6, height = 4, dpi = 300, bg = "white")
